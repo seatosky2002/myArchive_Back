@@ -25,6 +25,8 @@ INSTALLED_APPS = [
 
     # Third-party
     'rest_framework',
+    'rest_framework.authtoken',  # Token 인증
+    'corsheaders',               # CORS
 
     # Local
     'users',
@@ -41,6 +43,7 @@ AUTH_USER_MODEL = 'users.User'
 # Middleware
 # ───────────────────────────────────────────
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # 반드시 최상단에 위치
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -112,13 +115,23 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ───────────────────────────────────────────
-# DRF
+# DRF — Token 인증으로 전환 (SPA 친화적)
 # ───────────────────────────────────────────
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',  # Authorization: Token <key>
         'rest_framework.authentication.SessionAuthentication',
     ],
 }
+
+# ───────────────────────────────────────────
+# CORS — 프론트(localhost:5173) 요청 허용
+# ───────────────────────────────────────────
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+]
+CORS_ALLOW_CREDENTIALS = True

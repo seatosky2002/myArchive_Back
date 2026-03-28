@@ -1,5 +1,6 @@
 from django.contrib.auth import login, logout
 from rest_framework import status
+from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,7 +11,8 @@ from .serializers import LoginSerializer, ProfileUpdateSerializer, RegisterSeria
 class RegisterView(APIView):
     """
     POST /api/users/register/
-    회원가입 → 생성 성공 시 자동 로그인 후 유저 정보 반환.
+    회원가입 → Token 발급 → { token, user } 반환.
+    프론트는 token을 localStorage에 저장하여 이후 요청에 사용.
     인증 없이 접근 가능 (AllowAny).
     """
     permission_classes = (AllowAny,)
@@ -20,15 +22,18 @@ class RegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        # 가입 즉시 로그인 처리
-        login(request, user)
-        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+        # Token 발급 (get_or_create로 중복 방지)
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response(
+            {'token': token.key, 'user': UserSerializer(user).data},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class LoginView(APIView):
     """
     POST /api/users/login/
-    email + password → 세션 인증 → 유저 정보 반환.
+    email + password → Token 발급 → { token, user } 반환.
     인증 없이 접근 가능 (AllowAny).
     """
     permission_classes = (AllowAny,)
@@ -38,20 +43,24 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data['user']
-        login(request, user)
-        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response(
+            {'token': token.key, 'user': UserSerializer(user).data},
+            status=status.HTTP_200_OK,
+        )
 
 
 class LogoutView(APIView):
     """
     POST /api/users/logout/
-    세션 삭제 후 로그아웃.
-    로그인 상태에서만 접근 가능.
+    서버 측 Token 삭제.
+    프론트는 localStorage의 token도 함께 삭제해야 함.
     """
     permission_classes = (IsAuthenticated,)
 
     def post(self, request):
-        logout(request)
+        # Token 삭제로 서버 측 인증 무효화
+        request.user.auth_token.delete()
         return Response({'detail': '로그아웃 되었습니다.'}, status=status.HTTP_200_OK)
 
 
@@ -59,20 +68,17 @@ class MeView(APIView):
     """
     GET  /api/users/me/ → 내 프로필 조회
     PUT  /api/users/me/ → 내 프로필 수정 (nickname, profile_img_url)
-    로그인 상태에서만 접근 가능.
     """
     permission_classes = (IsAuthenticated,)
 
     def get(self, request):
-        # request.user는 현재 로그인한 유저 → 본인 정보만 반환
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data)
+        return Response(UserSerializer(request.user).data)
 
     def put(self, request):
         serializer = ProfileUpdateSerializer(
             request.user,
             data=request.data,
-            partial=True,   # 일부 필드만 수정 허용 (PATCH처럼 동작)
+            partial=True,
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
