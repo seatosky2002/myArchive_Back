@@ -90,10 +90,8 @@ class MemoryDetail(models.Model):
     content = models.TextField()
 
     if PGVECTOR_AVAILABLE:
-        content_embedding = VectorField(dimensions=1536, null=True, blank=True)
+        content_embedding = VectorField(dimensions=768, null=True, blank=True)  # Gemini text-embedding-004
     else:
-        # pgvector 미설치 시 JSONField로 대체
-        # TODO: pgvector 설치 후 VectorField(dimensions=1536)으로 교체
         content_embedding = models.JSONField(null=True, blank=True)
 
     class Meta:
