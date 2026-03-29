@@ -8,4 +8,5 @@ urlpatterns = [
     path('api/users/',      include('users.urls')),      # 인증 API
     path('api/locations/',  include('locations.urls')),  # 장소 API
     path('api/memories/',   include('memories.urls')),   # 기록 API
+    path('api/chat/',       include('chat.urls')),        # RAG 챗봇 API
 ]

@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'users',
     'locations',
     'memories',
+    'chat',
 ]
 
 # ───────────────────────────────────────────
@@ -135,3 +136,8 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:5173',
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+# ───────────────────────────────────────────
+# Gemini API
+# ───────────────────────────────────────────
+GEMINI_API_KEY = env('GEMINI_API_KEY')
