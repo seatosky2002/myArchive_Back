@@ -90,7 +90,7 @@ class MemoryDetail(models.Model):
     content = models.TextField()
 
     if PGVECTOR_AVAILABLE:
-        content_embedding = VectorField(dimensions=768, null=True, blank=True)  # Gemini text-embedding-004
+        content_embedding = VectorField(dimensions=3072, null=True, blank=True)  # Gemini gemini-embedding-001
     else:
         content_embedding = models.JSONField(null=True, blank=True)
 
