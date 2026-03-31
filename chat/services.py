@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 EMBEDDING_MODEL = 'models/gemini-embedding-001'
-CHAT_MODEL      = 'gemini-2.0-flash'
+CHAT_MODEL      = 'gemini-2.0-flash-lite'
 
 SYSTEM_PROMPT = (
     "당신은 사용자의 개인 일기를 기반으로 대화하는 AI 비서입니다.\n"
