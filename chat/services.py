@@ -9,8 +9,11 @@ embed_memory(memory_detail): MemoryDetail 하나를 임베딩해서 저장
 rag_chat(user, message):     질문 → 유사 기록 검색 → Gemini 답변
 """
 import logging
+import time
+import re
 
 import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted
 from django.conf import settings
 from pgvector.django import CosineDistance
 
@@ -25,6 +28,24 @@ genai.configure(api_key=settings.GEMINI_API_KEY)
 
 EMBEDDING_MODEL = 'models/gemini-embedding-001'
 CHAT_MODEL      = 'gemini-2.0-flash-lite'
+
+def _retry_on_quota(fn, *args, max_retries=3, **kwargs):
+    """
+    429 ResourceExhausted 발생 시 retry_delay 만큼 기다렸다가 재시도.
+    무료 티어 분당 한도 초과 시 자동 복구.
+    """
+    for attempt in range(max_retries):
+        try:
+            return fn(*args, **kwargs)
+        except ResourceExhausted as e:
+            if attempt == max_retries - 1:
+                raise
+            # 에러 메시지에서 retry_delay(seconds) 파싱
+            match = re.search(r'retry_delay\s*\{\s*seconds:\s*(\d+)', str(e))
+            wait = int(match.group(1)) + 1 if match else 20
+            logger.warning(f'Quota 초과, {wait}초 후 재시도 ({attempt+1}/{max_retries})')
+            time.sleep(wait)
+
 
 SYSTEM_PROMPT = (
     "당신은 사용자의 개인 일기를 기반으로 대화하는 AI 비서입니다.\n"
@@ -99,10 +120,10 @@ def rag_chat(user, message: str) -> dict:
 
     context = '\n'.join(context_lines) if context_lines else '관련 기록이 없습니다.'
 
-    # 4. Gemini 호출
+    # 4. Gemini 호출 (rate limit 시 자동 재시도)
     prompt = f"{SYSTEM_PROMPT}\n\n[관련 기록]\n{context}\n\n[질문]\n{message}"
     model = genai.GenerativeModel(CHAT_MODEL)
-    response = model.generate_content(prompt)
+    response = _retry_on_quota(model.generate_content, prompt)
     ai_text = response.text
 
     # 5. 대화 기록 저장
