@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 EMBEDDING_MODEL = 'models/gemini-embedding-001'
-CHAT_MODEL      = 'gemini-2.0-flash-lite'
+CHAT_MODEL      = 'gemini-2.0-flash'
 
 def _retry_on_quota(fn, *args, max_retries=3, **kwargs):
     """
