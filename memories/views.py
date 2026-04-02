@@ -1,7 +1,14 @@
 from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+
+class MemoryPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 200
 
 from .models import Category, Memory
 from .serializers import (
@@ -36,14 +43,17 @@ class MemoryListCreateView(APIView):
         )
 
         # 제목 또는 태그로 검색
-        search = request.query_params.get('search')
-        if search:
-            queryset = queryset.filter(title__icontains=search) | \
-                       queryset.filter(tags__name__icontains=search)
-            queryset = queryset.distinct()
+        search = request.query_params.get('search', '').strip()[:100]
+        if len(search) >= 1:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(title__icontains=search) | Q(tags__name__icontains=search)
+            ).distinct()
 
-        serializer = MemoryListSerializer(queryset, many=True)
-        return Response(serializer.data)
+        paginator = MemoryPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = MemoryListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
         serializer = MemoryCreateSerializer(data=request.data, context={'request': request})
