@@ -98,10 +98,13 @@ def rag_chat(user, message: str) -> dict:
         .select_related('memory', 'memory__location', 'memory__category')[:5]
     )
 
-    # 3. 컨텍스트 구성
+    # 3. 컨텍스트 구성 (distance 0.5 이하인 것만 관련 기록으로 포함)
+    DISTANCE_THRESHOLD = 0.5
     sources = []
     context_lines = []
     for md in results:
+        if md.distance > DISTANCE_THRESHOLD:
+            continue
         m = md.memory
         place_name = m.location.place_name if m.location else '알 수 없는 장소'
         line = f"- [{m.visited_at}] {m.title} / 장소: {place_name} / 내용: {md.content}"
