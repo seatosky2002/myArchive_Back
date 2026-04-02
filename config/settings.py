@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',  # Token 인증
     'corsheaders',               # CORS
+    'drf_spectacular',           # Swagger/OpenAPI
 
     # Local
     'users',
@@ -126,6 +127,17 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.TokenAuthentication',  # Authorization: Token <key>
         'rest_framework.authentication.SessionAuthentication',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+# ───────────────────────────────────────────
+# drf-spectacular (Swagger/OpenAPI)
+# ───────────────────────────────────────────
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'MyMemoryMap API',
+    'DESCRIPTION': '위치 기반 개인 기록 서비스 MyMemoryMap의 REST API',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 # ───────────────────────────────────────────
