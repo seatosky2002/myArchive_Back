@@ -8,15 +8,21 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.throttling import UserRateThrottle
 
 from memories.models import ChatSession
 from .serializers import ChatRequestSerializer, ChatResponseSerializer, ChatHistorySerializer
 from . import services
 
 
+class ChatRateThrottle(UserRateThrottle):
+    scope = 'chat'  # settings.py DEFAULT_THROTTLE_RATES['chat'] = '30/hour'
+
+
 class ChatView(APIView):
     """POST /api/chat/ — 질문 → RAG → Gemini 응답"""
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ChatRateThrottle]
 
     def post(self, request):
         serializer = ChatRequestSerializer(data=request.data)

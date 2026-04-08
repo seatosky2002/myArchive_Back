@@ -4,7 +4,7 @@ import environ
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
-    DEBUG=(bool, True),
+    DEBUG=(bool, False),  # 기본값 False — .env에 DEBUG=True 명시해야 개발 모드
 )
 environ.Env.read_env(BASE_DIR / '.env')
 
@@ -128,6 +128,15 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/hour',
+        'user': '200/hour',
+        'chat': '30/hour',
+    },
 }
 
 # ───────────────────────────────────────────
