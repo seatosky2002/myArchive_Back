@@ -25,9 +25,10 @@ INSTALLED_APPS = [
 
     # Third-party
     'rest_framework',
-    'rest_framework.authtoken',  # Token 인증
-    'corsheaders',               # CORS
-    'drf_spectacular',           # Swagger/OpenAPI
+    'rest_framework.authtoken',              # Token 인증 (레거시, 추후 제거)
+    'rest_framework_simplejwt.token_blacklist',  # JWT 블랙리스트 (DB 저장)
+    'corsheaders',                           # CORS
+    'drf_spectacular',                       # Swagger/OpenAPI
 
     # Local
     'users',
@@ -124,7 +125,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',  # Authorization: Token <key>
+        'rest_framework_simplejwt.authentication.JWTAuthentication',  # Authorization: Bearer <token>
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
@@ -137,6 +138,21 @@ REST_FRAMEWORK = {
         'user': '200/hour',
         'chat': '30/hour',
     },
+}
+
+# ───────────────────────────────────────────
+# JWT (djangorestframework-simplejwt)
+# ───────────────────────────────────────────
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME':    timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME':   timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS':    True,   # refresh 사용 시 새 refresh 발급
+    'BLACKLIST_AFTER_ROTATION': True,   # 이전 refresh는 DB 블랙리스트에 추가
+    'AUTH_HEADER_TYPES':        ('Bearer',),
+    'USER_ID_FIELD':            'id',
+    'USER_ID_CLAIM':            'user_id',
 }
 
 # ───────────────────────────────────────────

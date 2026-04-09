@@ -1,9 +1,9 @@
-from django.contrib.auth import login, logout
 from rest_framework import status
-from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 
 from .serializers import LoginSerializer, ProfileUpdateSerializer, RegisterSerializer, UserSerializer
 
@@ -11,8 +11,7 @@ from .serializers import LoginSerializer, ProfileUpdateSerializer, RegisterSeria
 class RegisterView(APIView):
     """
     POST /api/users/register/
-    회원가입 → Token 발급 → { token, user } 반환.
-    프론트는 token을 localStorage에 저장하여 이후 요청에 사용.
+    회원가입 → JWT 발급 → { access, refresh, user } 반환.
     인증 없이 접근 가능 (AllowAny).
     """
     permission_classes = (AllowAny,)
@@ -22,10 +21,13 @@ class RegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        # Token 발급 (get_or_create로 중복 방지)
-        token, _ = Token.objects.get_or_create(user=user)
+        refresh = RefreshToken.for_user(user)
         return Response(
-            {'token': token.key, 'user': UserSerializer(user).data},
+            {
+                'access':  str(refresh.access_token),
+                'refresh': str(refresh),
+                'user':    UserSerializer(user).data,
+            },
             status=status.HTTP_201_CREATED,
         )
 
@@ -33,7 +35,7 @@ class RegisterView(APIView):
 class LoginView(APIView):
     """
     POST /api/users/login/
-    email + password → Token 발급 → { token, user } 반환.
+    email + password → JWT 발급 → { access, refresh, user } 반환.
     인증 없이 접근 가능 (AllowAny).
     """
     permission_classes = (AllowAny,)
@@ -43,9 +45,13 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data['user']
-        token, _ = Token.objects.get_or_create(user=user)
+        refresh = RefreshToken.for_user(user)
         return Response(
-            {'token': token.key, 'user': UserSerializer(user).data},
+            {
+                'access':  str(refresh.access_token),
+                'refresh': str(refresh),
+                'user':    UserSerializer(user).data,
+            },
             status=status.HTTP_200_OK,
         )
 
@@ -53,14 +59,21 @@ class LoginView(APIView):
 class LogoutView(APIView):
     """
     POST /api/users/logout/
-    서버 측 Token 삭제.
-    프론트는 localStorage의 token도 함께 삭제해야 함.
+    body: { refresh: '<refresh_token>' }
+    refresh 토큰을 DB 블랙리스트에 추가 → 이후 갱신 불가.
+    access 토큰은 만료(1h)까지 유효하지만 짧으므로 허용.
     """
     permission_classes = (IsAuthenticated,)
 
     def post(self, request):
-        # Token 삭제로 서버 측 인증 무효화
-        request.user.auth_token.delete()
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response({'detail': 'refresh 토큰이 필요합니다.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        except TokenError:
+            return Response({'detail': '유효하지 않은 토큰입니다.'}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'detail': '로그아웃 되었습니다.'}, status=status.HTTP_200_OK)
 
 
