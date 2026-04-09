@@ -178,3 +178,29 @@ CORS_ALLOW_CREDENTIALS = True
 # Gemini API
 # ───────────────────────────────────────────
 GEMINI_API_KEY = env('GEMINI_API_KEY')
+
+# ───────────────────────────────────────────
+# Celery — Redis DB 0 (태스크 큐)
+# ───────────────────────────────────────────
+CELERY_BROKER_URL     = env('REDIS_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://localhost:6379/0')
+CELERY_TASK_SERIALIZER   = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT    = ['json']
+CELERY_TIMEZONE          = 'Asia/Seoul'
+
+# ───────────────────────────────────────────
+# Cache — Redis DB 2 (레이트 리밋 카운터)
+# DRF Throttle이 Django cache framework를 사용하므로
+# Redis로 전환하면 재시작 시 카운터 초기화 문제 해결
+# ───────────────────────────────────────────
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': env('REDIS_CACHE_URL', default='redis://localhost:6379/2'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'KEY_PREFIX': 'mymemorymap',
+    }
+}
