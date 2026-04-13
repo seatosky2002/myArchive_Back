@@ -26,7 +26,7 @@ INSTALLED_APPS = [
     # Third-party
     'rest_framework',
     'rest_framework.authtoken',              # Token 인증 (레거시, 추후 제거)
-    'rest_framework_simplejwt.token_blacklist',  # JWT 블랙리스트 (DB 저장)
+    # 'rest_framework_simplejwt.token_blacklist' 제거 — Redis 블랙리스트로 대체
     'corsheaders',                           # CORS
     'drf_spectacular',                       # Swagger/OpenAPI
 
@@ -125,7 +125,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',  # Authorization: Bearer <token>
+        'users.authentication.BlacklistAwareJWTAuthentication',  # 블랙리스트 검사 포함
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
@@ -146,14 +146,16 @@ REST_FRAMEWORK = {
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME':    timedelta(hours=1),
-    'REFRESH_TOKEN_LIFETIME':   timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS':    True,   # refresh 사용 시 새 refresh 발급
-    'BLACKLIST_AFTER_ROTATION': True,   # 이전 refresh는 DB 블랙리스트에 추가
-    'AUTH_HEADER_TYPES':        ('Bearer',),
-    'USER_ID_FIELD':            'id',
-    'USER_ID_CLAIM':            'user_id',
+    'ACCESS_TOKEN_LIFETIME':  timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS':  False,  # 회전은 CookieTokenRefreshView에서 직접 처리
+    'AUTH_HEADER_TYPES':      ('Bearer',),
+    'USER_ID_FIELD':          'id',
+    'USER_ID_CLAIM':          'user_id',
 }
+
+# Redis DB 3 — JWT 블랙리스트
+REDIS_BLACKLIST_URL = env('REDIS_BLACKLIST_URL', default='redis://localhost:6379/3')
 
 # ───────────────────────────────────────────
 # drf-spectacular (Swagger/OpenAPI)

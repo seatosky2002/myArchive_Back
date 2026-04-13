@@ -5,8 +5,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 
+from . import blacklist
 from .serializers import LoginSerializer, ProfileUpdateSerializer, RegisterSerializer, UserSerializer
 
 REFRESH_COOKIE = 'refresh'
@@ -71,17 +71,26 @@ class LoginView(APIView):
 class LogoutView(APIView):
     """
     POST /api/users/logout/
-    쿠키의 refresh 토큰을 블랙리스트 처리 후 쿠키 삭제.
+    - 쿠키의 refresh 토큰 → Redis 블랙리스트 등록 + 쿠키 삭제
+    - 헤더의 access 토큰  → Redis 블랙리스트 등록 (1시간 내 재사용 차단)
     """
     permission_classes = (IsAuthenticated,)
 
     def post(self, request):
-        refresh_token = request.COOKIES.get(REFRESH_COOKIE)
-        if refresh_token:
+        # access 토큰 블랙리스트 등록
+        access_token = request.auth
+        if access_token:
+            blacklist.add(access_token['jti'], access_token['exp'])
+
+        # refresh 토큰 블랙리스트 등록
+        refresh_str = request.COOKIES.get(REFRESH_COOKIE)
+        if refresh_str:
             try:
-                RefreshToken(refresh_token).blacklist()
+                refresh = RefreshToken(refresh_str)
+                blacklist.add(refresh['jti'], refresh['exp'])
             except TokenError:
                 pass
+
         response = Response({'detail': '로그아웃 되었습니다.'}, status=status.HTTP_200_OK)
         response.delete_cookie(REFRESH_COOKIE, path=REFRESH_COOKIE_PATH)
         return response
@@ -91,28 +100,38 @@ class CookieTokenRefreshView(APIView):
     """
     POST /api/users/token/refresh/
     쿠키의 refresh 토큰으로 새 access 발급.
-    ROTATE_REFRESH_TOKENS=True면 새 refresh도 쿠키로 재설정.
+    이전 refresh JTI는 블랙리스트에 추가하고 새 refresh를 쿠키로 재설정 (rotation).
     """
     permission_classes = (AllowAny,)
 
     def post(self, request):
-        refresh_token = request.COOKIES.get(REFRESH_COOKIE)
-        if not refresh_token:
+        refresh_str = request.COOKIES.get(REFRESH_COOKIE)
+        if not refresh_str:
             return Response({'detail': 'refresh 토큰이 없습니다.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        serializer = TokenRefreshSerializer(data={'refresh': refresh_token})
         try:
-            serializer.is_valid(raise_exception=True)
-        except TokenError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
+            refresh = RefreshToken(refresh_str)
+        except TokenError:
+            return Response({'detail': '유효하지 않은 refresh 토큰입니다.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        response = Response({'access': serializer.validated_data['access']})
+        # 블랙리스트 확인
+        if blacklist.is_blacklisted(refresh['jti']):
+            return Response({'detail': '만료된 refresh 토큰입니다.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # ROTATE_REFRESH_TOKENS=True일 때 새 refresh를 쿠키로 재설정
-        if 'refresh' in serializer.validated_data:
-            _set_refresh_cookie(response, serializer.validated_data['refresh'])
+        # 이전 refresh 블랙리스트 등록 (rotation)
+        blacklist.add(refresh['jti'], refresh['exp'])
 
+        # 새 토큰 발급
+        new_refresh = RefreshToken.for_user(refresh.user_token if hasattr(refresh, 'user_token') else _get_user_from_refresh(refresh))
+        response = Response({'access': str(new_refresh.access_token)})
+        _set_refresh_cookie(response, new_refresh)
         return response
+
+
+def _get_user_from_refresh(refresh):
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    return User.objects.get(pk=refresh['user_id'])
 
 
 class MeView(APIView):
