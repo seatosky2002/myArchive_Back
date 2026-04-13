@@ -110,7 +110,8 @@ USE_TZ = True
 # ───────────────────────────────────────────
 # Static
 # ───────────────────────────────────────────
-STATIC_URL = 'static/'
+STATIC_URL  = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # collectstatic 결과물 (Nginx가 서빙)
 
 # ───────────────────────────────────────────
 # Default PK
