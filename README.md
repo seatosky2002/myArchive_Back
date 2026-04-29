@@ -181,6 +181,51 @@ celery -A config worker --loglevel=info
 
 ---
 
+## RAG 구조
+
+기록을 벡터로 저장해두고, 질문이 들어오면 유사한 기록을 찾아 Gemini에게 넘겨 답변을 생성하는 구조.
+
+**참고:** [langchain-ai/langchain](https://github.com/langchain-ai/langchain) 기반으로 초기 구현 후, `task_type` 구분(`RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY`) 지원을 위해 `google.genai` SDK 직접 호출로 전환.
+
+### 임베딩 저장 흐름
+
+```
+POST /api/memories/
+  → Memory + MemoryDetail 저장 → 즉시 201 반환
+  → signals.py post_save 발화
+  → embed_memory_task.delay()  (Celery 큐)
+       ↓ 비동기
+  → 제목 + 날짜 + 본문 합쳐서 텍스트 구성
+  → Gemini embed_content(task_type=RETRIEVAL_DOCUMENT)
+  → content_embedding 저장 (3072차원)
+```
+
+### 질문 응답 흐름
+
+```
+POST /api/chat/
+  → 질문 텍스트 임베딩 (task_type=RETRIEVAL_QUERY)
+  → pgvector CosineDistance로 내 기록 상위 5개 검색
+  → distance > 0.5 제거 (무관한 기록 차단)
+  → 남은 기록을 컨텍스트로 구성
+  → Gemini generate_content 호출
+  → 응답 + 출처(기록 제목/날짜/장소) 반환
+```
+
+### LangChain → google.genai 전환 내역
+
+| 항목 | 초기 (LangChain) | 현재 (google.genai 직접) |
+|------|-----------------|------------------------|
+| 임베딩 모델 | `text-embedding-004` | `gemini-embedding-001` |
+| 임베딩 차원 | 768 | 3072 |
+| LLM 모델 | `gemini-1.5-flash` | `gemini-2.5-flash` |
+| 임베딩 호출 | `GoogleGenerativeAIEmbeddings.embed_query()` | `client.models.embed_content()` + `task_type` 구분 |
+| LLM 호출 | `ChatGoogleGenerativeAI.invoke([SystemMessage, HumanMessage])` | `client.models.generate_content()` |
+| 유사도 필터 | 없음 | `distance > 0.5` 제거 |
+| 레이트 리밋 | 없음 | `_retry_on_quota()` 자동 재시도 |
+
+---
+
 ## API 문서
 
 → [docs/API.md](./docs/API.md)
