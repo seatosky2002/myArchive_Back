@@ -121,24 +121,43 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ───────────────────────────────────────────
-# DRF — Token 인증으로 전환 (SPA 친화적)
+# DRF — JWT 인증
 # ───────────────────────────────────────────
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',  # Authorization: Token <key>
+        'users.authentication.BlacklistAwareJWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'user': '200/hour',   # 일반 API 전체
-        'chat': '30/hour',    # /api/chat/ — Gemini 비용 보호
+        'user': '200/hour',
+        'chat': '30/hour',
     },
 }
+
+# ───────────────────────────────────────────
+# JWT (djangorestframework-simplejwt)
+# ───────────────────────────────────────────
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME':  timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS':  False,
+    'AUTH_HEADER_TYPES':      ('Bearer',),
+    'USER_ID_FIELD':          'id',
+    'USER_ID_CLAIM':          'user_id',
+}
+
+# ───────────────────────────────────────────
+# Redis — JWT 블랙리스트 (DB 3)
+# ───────────────────────────────────────────
+REDIS_BLACKLIST_URL = env('REDIS_BLACKLIST_URL', default='redis://localhost:6379/3')
 
 # ───────────────────────────────────────────
 # CORS — 프론트(localhost:5173) 요청 허용
