@@ -4,7 +4,7 @@ import environ
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
-    DEBUG=(bool, False),  # 기본값 False — .env에 DEBUG=True 명시해야 개발 모드
+    DEBUG=(bool, True),
 )
 environ.Env.read_env(BASE_DIR / '.env')
 
@@ -25,10 +25,9 @@ INSTALLED_APPS = [
 
     # Third-party
     'rest_framework',
-    'rest_framework.authtoken',              # Token 인증 (레거시, 추후 제거)
-    # 'rest_framework_simplejwt.token_blacklist' 제거 — Redis 블랙리스트로 대체
-    'corsheaders',                           # CORS
-    'drf_spectacular',                       # Swagger/OpenAPI
+    'rest_framework.authtoken',  # Token 인증
+    'corsheaders',               # CORS
+    'drf_spectacular',           # Swagger/OpenAPI
 
     # Local
     'users',
@@ -108,10 +107,13 @@ USE_I18N = True
 USE_TZ = True
 
 # ───────────────────────────────────────────
-# Static
+# Static / Media
 # ───────────────────────────────────────────
 STATIC_URL  = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'  # collectstatic 결과물 (Nginx가 서빙)
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL  = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # ───────────────────────────────────────────
 # Default PK
@@ -126,46 +128,16 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'users.authentication.BlacklistAwareJWTAuthentication',  # 블랙리스트 검사 포함
+        'rest_framework.authentication.TokenAuthentication',  # Authorization: Token <key>
         'rest_framework.authentication.SessionAuthentication',
     ],
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '20/hour',
-        'user': '200/hour',
-        'chat': '30/hour',
+        'user': '200/hour',   # 일반 API 전체
+        'chat': '30/hour',    # /api/chat/ — Gemini 비용 보호
     },
-}
-
-# ───────────────────────────────────────────
-# JWT (djangorestframework-simplejwt)
-# ───────────────────────────────────────────
-from datetime import timedelta
-
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME':  timedelta(hours=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS':  False,  # 회전은 CookieTokenRefreshView에서 직접 처리
-    'AUTH_HEADER_TYPES':      ('Bearer',),
-    'USER_ID_FIELD':          'id',
-    'USER_ID_CLAIM':          'user_id',
-}
-
-# Redis DB 3 — JWT 블랙리스트
-REDIS_BLACKLIST_URL = env('REDIS_BLACKLIST_URL', default='redis://localhost:6379/3')
-
-# ───────────────────────────────────────────
-# drf-spectacular (Swagger/OpenAPI)
-# ───────────────────────────────────────────
-SPECTACULAR_SETTINGS = {
-    'TITLE': 'MyMemoryMap API',
-    'DESCRIPTION': '위치 기반 개인 기록 서비스 MyMemoryMap의 REST API',
-    'VERSION': '1.0.0',
-    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 # ───────────────────────────────────────────
@@ -181,29 +153,3 @@ CORS_ALLOW_CREDENTIALS = True
 # Gemini API
 # ───────────────────────────────────────────
 GEMINI_API_KEY = env('GEMINI_API_KEY')
-
-# ───────────────────────────────────────────
-# Celery — Redis DB 0 (태스크 큐)
-# ───────────────────────────────────────────
-CELERY_BROKER_URL     = env('REDIS_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://localhost:6379/0')
-CELERY_TASK_SERIALIZER   = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_ACCEPT_CONTENT    = ['json']
-CELERY_TIMEZONE          = 'Asia/Seoul'
-
-# ───────────────────────────────────────────
-# Cache — Redis DB 2 (레이트 리밋 카운터)
-# DRF Throttle이 Django cache framework를 사용하므로
-# Redis로 전환하면 재시작 시 카운터 초기화 문제 해결
-# ───────────────────────────────────────────
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': env('REDIS_CACHE_URL', default='redis://localhost:6379/2'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        },
-        'KEY_PREFIX': 'mymemorymap',
-    }
-}

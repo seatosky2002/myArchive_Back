@@ -12,9 +12,16 @@ class TagSerializer(serializers.ModelSerializer):
 
 class MemoryImageSerializer(serializers.ModelSerializer):
     """이미지 읽기용. Memory 상세 응답에 images 배열로 중첩."""
+    url = serializers.SerializerMethodField()
+
+    def get_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
+
     class Meta:
         model = MemoryImage
-        fields = ('id', 'storage_url', 'created_at')
+        fields = ('id', 'url', 'created_at')
 
 
 class CategorySerializer(serializers.ModelSerializer):

@@ -1,5 +1,6 @@
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,11 +11,12 @@ class MemoryPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 200
 
-from .models import Category, Memory
+from .models import Category, Memory, MemoryImage
 from .serializers import (
     CategorySerializer,
     MemoryCreateSerializer,
     MemoryDetailSerializer,
+    MemoryImageSerializer,
     MemoryListSerializer,
 )
 
@@ -167,4 +169,74 @@ class CategoryDetailView(APIView):
             return Response({'detail': '카테고리를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
 
         category.delete()  # memories의 category_id는 SET_NULL로 처리됨
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _normalize_to_jpeg(upload_file):
+    """
+    HEIC/HEIF 등 브라우저 미지원 포맷을 JPEG로 변환.
+    JPEG/PNG/WebP 등 일반 포맷은 그대로 반환.
+    반환값: (InMemoryUploadedFile, filename)
+    """
+    import io
+    from django.core.files.uploadedfile import InMemoryUploadedFile
+
+    name = upload_file.name or ''
+    ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+
+    if ext in ('heic', 'heif'):
+        from pillow_heif import register_heif_opener
+        from PIL import Image
+        register_heif_opener()
+        img = Image.open(upload_file)
+        img = img.convert('RGB')
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=88)
+        buf.seek(0)
+        new_name = name.rsplit('.', 1)[0] + '.jpg'
+        return InMemoryUploadedFile(buf, 'image', new_name, 'image/jpeg', buf.getbuffer().nbytes, None)
+
+    return upload_file
+
+
+class MemoryImageUploadView(APIView):
+    """
+    POST /api/memories/<id>/images/
+        - multipart/form-data로 이미지 파일 업로드
+        - HEIC/HEIF는 서버에서 JPEG로 자동 변환
+        - 업로드된 이미지 정보(id, url) 반환
+    """
+    permission_classes = (IsAuthenticated,)
+    parser_classes = (MultiPartParser,)
+
+    def post(self, request, pk):
+        try:
+            memory = Memory.objects.get(pk=pk, user=request.user)
+        except Memory.DoesNotExist:
+            return Response({'detail': '기록을 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
+
+        image_file = request.FILES.get('image')
+        if not image_file:
+            return Response({'detail': '이미지 파일이 없습니다.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        image_file = _normalize_to_jpeg(image_file)
+        img = MemoryImage.objects.create(memory=memory, image=image_file)
+        return Response(MemoryImageSerializer(img).data, status=status.HTTP_201_CREATED)
+
+
+class MemoryImageDeleteView(APIView):
+    """
+    DELETE /api/memories/<id>/images/<image_id>/
+        - 이미지 삭제 (파일 + DB 레코드)
+    """
+    permission_classes = (IsAuthenticated,)
+
+    def delete(self, request, pk, image_id):
+        try:
+            img = MemoryImage.objects.get(pk=image_id, memory__pk=pk, memory__user=request.user)
+        except MemoryImage.DoesNotExist:
+            return Response({'detail': '이미지를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
+
+        img.image.delete(save=False)  # 파일도 함께 삭제
+        img.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

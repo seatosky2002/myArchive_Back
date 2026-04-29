@@ -129,7 +129,7 @@ class MemoryImage(models.Model):
         on_delete=models.CASCADE,
         related_name='images',
     )
-    storage_url = models.TextField()
+    image = models.ImageField(upload_to='memory_images/%Y/%m/', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
