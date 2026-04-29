@@ -30,5 +30,8 @@ media/
 # macOS
 .DS_Store
 
+# React 빌드 결과물 (배포 시 npm run build 후 직접 복사)
+frontend/
+
 # Migrations (선택적 - 팀 프로젝트 시 제거)
 # */migrations/
