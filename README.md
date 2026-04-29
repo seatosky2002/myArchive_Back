@@ -183,6 +183,6 @@ celery -A config worker --loglevel=info
 
 ## API 문서
 
-→ [API.md](./API.md)
+→ [docs/API.md](./docs/API.md)
 
 Swagger UI (서버 실행 후): `http://localhost:8000/api/docs/`
