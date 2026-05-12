@@ -35,12 +35,12 @@ class MemoryListCreateView(APIView):
     permission_classes = (IsAuthenticated,)
 
     def get(self, request):
-        # 본인 기록만 조회, 위치/카테고리 select_related로 N+1 방지
+        # 개인 기억만 조회 (group=null). 그룹 기억은 /api/groups/{id}/memories/ 에서 조회
         queryset = (
             Memory.objects
-            .filter(user=request.user)
+            .filter(user=request.user, group__isnull=True)
             .select_related('location__address_detail', 'category')
-            .prefetch_related('tags')
+            .prefetch_related('tags', 'images')
             .order_by('-visited_at')
         )
 
@@ -78,46 +78,80 @@ class MemoryDetailView(APIView):
     """
     permission_classes = (IsAuthenticated,)
 
-    def get_object(self, pk, user):
-        """본인 기록만 조회, 없으면 None 반환"""
+    def _get_memory(self, pk):
         try:
             return (
                 Memory.objects
-                .select_related('location__address_detail__region', 'category', 'detail')
+                .select_related('location__address_detail__region', 'category', 'detail', 'group')
                 .prefetch_related('tags', 'images')
-                .get(pk=pk, user=user)
+                .get(pk=pk)
             )
         except Memory.DoesNotExist:
             return None
 
-    def get(self, request, pk):
-        memory = self.get_object(pk, request.user)
-        if not memory:
-            return Response({'detail': '기록을 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
+    def _check_read_permission(self, memory, user):
+        """본인 기억이거나 그룹 활성 멤버면 열람 허용"""
+        if memory.user == user:
+            return True
+        if memory.group:
+            from groups.models import GroupMember, MemberStatus
+            return memory.group.members.filter(user=user, status=MemberStatus.ACTIVE).exists()
+        return False
 
+    def _check_write_permission(self, memory, user):
+        """수정은 본인만"""
+        return memory.user == user
+
+    def _check_delete_permission(self, memory, user):
+        """삭제는 본인 or 그룹 admin/owner"""
+        if memory.user == user:
+            return True
+        if memory.group:
+            from groups.models import GroupMember, MemberStatus, MemberRole
+            try:
+                m = memory.group.members.get(user=user, status=MemberStatus.ACTIVE)
+                return m.role in (MemberRole.OWNER, MemberRole.ADMIN)
+            except GroupMember.DoesNotExist:
+                pass
+        return False
+
+    def get(self, request, pk):
+        memory = self._get_memory(pk)
+        if not memory or not self._check_read_permission(memory, request.user):
+            return Response({'detail': '기록을 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(MemoryDetailSerializer(memory).data)
 
     def put(self, request, pk):
-        memory = self.get_object(pk, request.user)
-        if not memory:
+        memory = self._get_memory(pk)
+        if not memory or not self._check_write_permission(memory, request.user):
             return Response({'detail': '기록을 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = MemoryCreateSerializer(
             memory,
             data=request.data,
             context={'request': request},
-            partial=True,   # 일부 필드만 수정 허용
+            partial=True,
         )
         serializer.is_valid(raise_exception=True)
         updated = serializer.save()
         return Response(MemoryDetailSerializer(updated).data)
 
     def delete(self, request, pk):
-        memory = self.get_object(pk, request.user)
-        if not memory:
+        memory = self._get_memory(pk)
+        if not memory or not self._check_delete_permission(memory, request.user):
             return Response({'detail': '기록을 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
 
-        memory.delete()  # CASCADE로 MemoryDetail, Tag, Image 자동 삭제
+        # 그룹 admin이 타인 기억 삭제 시 활동 로그 기록
+        if memory.group and memory.user != request.user:
+            from groups.models import GroupActivity, ActivityType
+            GroupActivity.objects.create(
+                group=memory.group,
+                actor=request.user,
+                type=ActivityType.MEMORY_DELETED,
+                metadata={'memory_id': str(memory.id), 'memory_title': memory.title},
+            )
+
+        memory.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

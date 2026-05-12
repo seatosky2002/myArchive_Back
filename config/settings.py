@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'locations',
     'memories',
     'chat',
+    'groups',
 ]
 
 # ───────────────────────────────────────────

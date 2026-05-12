@@ -52,6 +52,13 @@ class Memory(models.Model):
         on_delete=models.CASCADE,
         related_name='memories',
     )
+    group = models.ForeignKey(
+        'groups.Group',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='memories',
+    )
     location = models.ForeignKey(
         'locations.Location',
         on_delete=models.PROTECT,
@@ -64,6 +71,14 @@ class Memory(models.Model):
         blank=True,
         related_name='memories',
     )
+    group_category = models.ForeignKey(
+        'groups.GroupCategory',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='memories',
+    )
+    author_nickname = models.CharField(max_length=50, default='')
     title = models.CharField(max_length=200)
     mood = models.CharField(max_length=20, choices=MoodType.choices)
     weather = models.CharField(max_length=20, choices=WeatherType.choices)
@@ -74,6 +89,19 @@ class Memory(models.Model):
     class Meta:
         db_table = 'memories'
         ordering = ['-visited_at']
+        indexes = [
+            models.Index(fields=['group', '-visited_at'], name='idx_memories_group_date'),
+            models.Index(fields=['user', 'group'], name='idx_memories_user_group'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(group__isnull=True, group_category__isnull=True) |
+                    models.Q(group__isnull=False, category__isnull=True)
+                ),
+                name='chk_category_scope',
+            )
+        ]
 
     def __str__(self):
         return f'[{self.visited_at}] {self.title}'

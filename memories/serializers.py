@@ -42,25 +42,30 @@ class CategorySerializer(serializers.ModelSerializer):
 class MemoryListSerializer(serializers.ModelSerializer):
     """
     기록 목록/마커용 경량 Serializer.
-    GET /api/memories/ 응답에 사용.
+    GET /api/memories/ 및 GET /api/groups/{id}/memories/ 응답에 사용.
     content(본문)는 포함하지 않아 MemoryDetail JOIN 없이 빠르게 조회.
-    tags는 이름만 문자열 배열로 반환.
     """
     location = LocationSerializer(read_only=True)
     tags = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     mood_display = serializers.CharField(source='get_mood_display', read_only=True)
     weather_display = serializers.CharField(source='get_weather_display', read_only=True)
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    group_id = serializers.UUIDField(source='group.id', read_only=True, default=None)
 
     class Meta:
         model = Memory
         fields = (
-            'id', 'title', 'mood', 'mood_display', 'weather', 'weather_display',
-            'visited_at', 'created_at', 'location', 'category', 'tags',
+            'id', 'user_id', 'group_id', 'author_nickname',
+            'title', 'mood', 'mood_display', 'weather', 'weather_display',
+            'visited_at', 'created_at', 'location', 'category', 'tags', 'images',
         )
 
     def get_tags(self, obj):
-        # 태그 이름만 문자열 리스트로 반환 (프론트 칩 UI용)
         return list(obj.tags.values_list('name', flat=True))
+
+    def get_images(self, obj):
+        return MemoryImageSerializer(obj.images.all(), many=True).data
 
 
 class MemoryDetailSerializer(serializers.ModelSerializer):
@@ -76,11 +81,14 @@ class MemoryDetailSerializer(serializers.ModelSerializer):
     content = serializers.CharField(source='detail.content', read_only=True)
     mood_display = serializers.CharField(source='get_mood_display', read_only=True)
     weather_display = serializers.CharField(source='get_weather_display', read_only=True)
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    group_id = serializers.UUIDField(source='group.id', read_only=True, default=None)
 
     class Meta:
         model = Memory
         fields = (
-            'id', 'title', 'mood', 'mood_display', 'weather', 'weather_display',
+            'id', 'user_id', 'group_id', 'author_nickname',
+            'title', 'mood', 'mood_display', 'weather', 'weather_display',
             'visited_at', 'created_at', 'updated_at',
             'location', 'category', 'tags', 'images', 'content',
         )
@@ -90,18 +98,7 @@ class MemoryCreateSerializer(serializers.Serializer):
     """
     기록 생성/수정 쓰기용 Serializer.
     POST /api/memories/ 및 PUT /api/memories/<id>/ 에 사용.
-
-    요청 구조:
-    {
-      "title": "경복궁 산책",
-      "mood": "peaceful",
-      "weather": "sunny",
-      "visited_at": "2026-03-25",
-      "location_id": "<uuid>",        # 이미 생성된 Location ID
-      "category_id": 1,               # nullable
-      "content": "오늘은 날씨가...",
-      "tags": ["산책", "봄", "서울"]   # 문자열 배열
-    }
+    group_id가 있으면 그룹 기억으로 생성.
     """
     title       = serializers.CharField(max_length=200)
     mood        = serializers.ChoiceField(choices=Memory.mood.field.choices)
@@ -109,6 +106,7 @@ class MemoryCreateSerializer(serializers.Serializer):
     visited_at  = serializers.DateField()
     location_id = serializers.UUIDField()
     category_id = serializers.IntegerField(required=False, allow_null=True)
+    group_id    = serializers.UUIDField(required=False, allow_null=True)
     content     = serializers.CharField()
     tags        = serializers.ListField(
         child=serializers.CharField(max_length=50),
@@ -117,14 +115,12 @@ class MemoryCreateSerializer(serializers.Serializer):
     )
 
     def validate_location_id(self, value):
-        """location_id가 실제로 존재하는 Location인지 검증"""
         from locations.models import Location
         if not Location.objects.filter(pk=value).exists():
             raise serializers.ValidationError('존재하지 않는 장소입니다.')
         return value
 
     def validate_category_id(self, value):
-        """category_id가 있으면 요청 유저 소유 카테고리인지 검증"""
         if value is None:
             return value
         user = self.context['request'].user
@@ -132,26 +128,37 @@ class MemoryCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError('존재하지 않는 카테고리입니다.')
         return value
 
-    def create(self, validated_data):
-        """
-        1. Memory 생성
-        2. MemoryDetail(content) 생성
-        3. Tag bulk_create
-        """
-        from locations.models import Location
-        tags_data = validated_data.pop('tags', [])
-        content = validated_data.pop('content')
+    def validate_group_id(self, value):
+        if value is None:
+            return value
+        from groups.models import Group, GroupMember, MemberStatus, MemberRole
+        try:
+            group = Group.objects.get(pk=value, deleted_at__isnull=True)
+        except Group.DoesNotExist:
+            raise serializers.ValidationError('존재하지 않는 그룹입니다.')
         user = self.context['request'].user
+        try:
+            member = group.members.get(user=user, status=MemberStatus.ACTIVE)
+        except GroupMember.DoesNotExist:
+            raise serializers.ValidationError('해당 그룹의 멤버가 아닙니다.')
+        if member.role == MemberRole.VIEWER:
+            raise serializers.ValidationError('뷰어는 기억을 생성할 수 없습니다.')
+        return value
+
+    def create(self, validated_data):
+        tags_data = validated_data.pop('tags', [])
+        content   = validated_data.pop('content')
+        user      = self.context['request'].user
 
         memory = Memory.objects.create(
             user=user,
             location_id=validated_data.pop('location_id'),
             category_id=validated_data.pop('category_id', None),
+            group_id=validated_data.pop('group_id', None),
+            author_nickname=user.nickname,
             **validated_data,
         )
         MemoryDetail.objects.create(memory=memory, content=content)
-
-        # 태그 bulk_create (ignore_conflicts로 unique 위반 무시)
         Tag.objects.bulk_create(
             [Tag(memory=memory, name=name) for name in tags_data],
             ignore_conflicts=True,

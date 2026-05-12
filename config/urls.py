@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/locations/',  include('locations.urls')),  # 장소 API
     path('api/memories/',   include('memories.urls')),   # 기록 API
     path('api/chat/',       include('chat.urls')),        # RAG 챗봇 API
+    path('api/groups/',     include('groups.urls')),      # 그룹 API
 
     # Swagger / OpenAPI
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
