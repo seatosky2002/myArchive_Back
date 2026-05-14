@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from memories.views import MemoryPagination
 from .models import Group, GroupMember, GroupActivity, MemberRole, MemberStatus, ActivityType
 from .serializers import (
     GroupListSerializer, GroupDetailSerializer, GroupCreateSerializer,
@@ -214,6 +215,7 @@ class ResetInviteCodeView(APIView):
 
 class GroupMemoryListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
+    pagination_class   = MemoryPagination
 
     def get_serializer_class(self):
         from memories.serializers import MemoryListSerializer

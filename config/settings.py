@@ -136,8 +136,8 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'user': '200/hour',
-        'chat': '30/hour',
+        'user': '10000/hour',
+        'chat': '500/hour',
     },
 }
 
@@ -159,6 +159,9 @@ SIMPLE_JWT = {
 # Redis — JWT 블랙리스트 (DB 3)
 # ───────────────────────────────────────────
 REDIS_BLACKLIST_URL = env('REDIS_BLACKLIST_URL', default='redis://localhost:6379/3')
+
+CELERY_BROKER_URL     = env('CELERY_BROKER_URL',     default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://localhost:6379/1')
 
 # ───────────────────────────────────────────
 # CORS — 프론트(localhost:5173) 요청 허용

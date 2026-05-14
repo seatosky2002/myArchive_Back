@@ -78,7 +78,7 @@ erDiagram
     }
 
     memory_details {
-        uuid memory_id PK_FK
+        uuid memory_id PK
         text content
         vector content_embedding
     }

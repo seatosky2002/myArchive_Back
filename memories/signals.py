@@ -12,8 +12,11 @@ logger = logging.getLogger(__name__)
 def auto_embed_on_save(sender, instance, created, **kwargs):
     """MemoryDetail post_save 시그널 핸들러 — Celery 큐에 태스크 발행"""
     if not created:
-        return  # 수정 시에는 재임베딩 안 함
+        return
 
-    from chat.tasks import embed_memory_task
-    embed_memory_task.delay(str(instance.memory_id))
-    # .delay()는 즉시 반환 — Django는 Gemini 응답 기다리지 않고 201 응답
+    try:
+        from chat.tasks import embed_memory_task
+        embed_memory_task.delay(str(instance.memory_id))
+    except Exception as e:
+        # 로컬 개발 환경 등 Celery 브로커가 없을 때 기록 저장 자체는 성공시킴
+        logger.warning('임베딩 태스크 발행 실패 (Celery 브로커 미연결?): %s', e)
