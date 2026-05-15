@@ -138,6 +138,8 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'user': '10000/hour',
         'chat': '500/hour',
+        'login': '5/minute',
+        'register': '3/minute',
     },
 }
 

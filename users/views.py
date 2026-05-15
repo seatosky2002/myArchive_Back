@@ -8,6 +8,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 
 from . import blacklist
 from .serializers import LoginSerializer, ProfileUpdateSerializer, RegisterSerializer, UserSerializer
+from .throttles import LoginRateThrottle, RegisterRateThrottle
 
 REFRESH_COOKIE = 'refresh'
 REFRESH_COOKIE_PATH = '/api/users/token/'
@@ -32,6 +33,7 @@ class RegisterView(APIView):
     회원가입 → access는 body, refresh는 httpOnly 쿠키로 반환.
     """
     permission_classes = (AllowAny,)
+    throttle_classes = (RegisterRateThrottle,)
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -53,6 +55,7 @@ class LoginView(APIView):
     email + password → access는 body, refresh는 httpOnly 쿠키로 반환.
     """
     permission_classes = (AllowAny,)
+    throttle_classes = (LoginRateThrottle,)
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
