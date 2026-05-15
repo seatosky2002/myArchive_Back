@@ -139,6 +139,93 @@ PUT /api/users/me/
 
 ---
 
+### 계정 탈퇴
+```
+DELETE /api/users/me/
+인증: 필요
+```
+
+**요청**
+```json
+{ "password": "현재비밀번호" }
+```
+
+비밀번호 불일치 시 `400`. 성공 시 access/refresh 토큰 블랙리스트 등록 후 계정 삭제.
+
+**응답 `200`**
+```json
+{ "detail": "계정이 삭제되었습니다." }
+```
+
+---
+
+### 비밀번호 변경
+```
+PUT /api/users/me/password/
+인증: 필요
+```
+
+**요청**
+```json
+{
+  "current_password": "현재비밀번호",
+  "new_password": "새비밀번호"
+}
+```
+
+새 비밀번호는 8자 이상, 현재 비밀번호와 달라야 함.
+
+**응답 `200`**
+```json
+{ "detail": "비밀번호가 변경되었습니다." }
+```
+
+---
+
+### 비밀번호 재설정 요청
+```
+POST /api/users/password-reset/
+인증: 불필요
+```
+
+가입된 이메일로 재설정 링크 발송. 이메일 미존재 시에도 `200` 반환 (계정 존재 여부 노출 방지).
+
+**요청**
+```json
+{ "email": "user@example.com" }
+```
+
+**응답 `200`**
+```json
+{ "detail": "이메일이 전송되었습니다. 받은 편지함을 확인해주세요." }
+```
+
+---
+
+### 비밀번호 재설정 확인
+```
+POST /api/users/password-reset/confirm/
+인증: 불필요
+```
+
+이메일 링크에 포함된 `uid`, `token`으로 검증 후 새 비밀번호 설정. 토큰 유효기간 24시간.
+
+**요청**
+```json
+{
+  "uid": "base64-encoded-user-id",
+  "token": "reset-token",
+  "new_password": "새비밀번호"
+}
+```
+
+**응답 `200`**
+```json
+{ "detail": "비밀번호가 재설정되었습니다." }
+```
+
+---
+
 ## 장소 `/api/locations/`
 
 ### 장소 생성 또는 조회
@@ -267,6 +354,7 @@ POST /api/memories/
   "location_id": "uuid",
   "category_id": null,
   "group_id": null,
+  "group_category_id": null,
   "content": "오늘은 날씨가 정말 좋았다...",
   "tags": ["산책", "봄", "서울"]
 }
@@ -635,6 +723,96 @@ POST /api/groups/<uuid:id>/reset-invite-code/
 
 ---
 
+### Owner 양도
+```
+POST /api/groups/<uuid:id>/transfer-owner/
+인증: 필요 (owner만)
+```
+
+현재 owner → admin 강등, 대상 멤버 → owner 승격. 대상은 활성 멤버여야 함.
+
+**요청**
+```json
+{ "user_id": "uuid" }
+```
+
+**응답 `200`**
+```json
+{ "detail": "닉네임에게 그룹 오너가 양도되었습니다." }
+```
+
+---
+
+### 활동 로그 조회
+```
+GET /api/groups/<uuid:id>/activities/
+인증: 필요 (admin 이상)
+```
+
+최근 100건의 그룹 활동 내역 반환.
+
+**응답 `200`**
+```json
+[
+  {
+    "id": "uuid",
+    "type": "member_joined",
+    "actor_nickname": "홍길동",
+    "target_nickname": null,
+    "metadata": null,
+    "created_at": "2026-04-29T12:00:00Z"
+  }
+]
+```
+
+**type 값:** `member_joined` `member_left` `member_banned` `member_role_changed` `memory_created` `memory_deleted` `group_updated` `invite_code_reset`
+
+---
+
+### 그룹 카테고리 목록 / 생성
+```
+GET  /api/groups/<uuid:id>/categories/
+POST /api/groups/<uuid:id>/categories/
+인증: 필요 (GET: 활성 멤버 / POST: admin 이상)
+```
+
+**POST 요청**
+```json
+{
+  "name": "맛집",
+  "color_code": "#4D7C0F"
+}
+```
+
+**GET 응답 `200`**
+```json
+[
+  { "id": 1, "name": "맛집", "color_code": "#4D7C0F" }
+]
+```
+
+**POST 응답 `201`** — 위와 동일 구조
+
+---
+
+### 그룹 카테고리 수정 / 삭제
+```
+PATCH  /api/groups/<uuid:id>/categories/<int:category_id>/
+DELETE /api/groups/<uuid:id>/categories/<int:category_id>/
+인증: 필요 (admin 이상)
+```
+
+삭제 시 해당 카테고리의 기록들은 `group_category = null` 처리.
+
+**PATCH 요청** (변경할 필드만)
+```json
+{ "name": "새 카테고리명" }
+```
+
+**DELETE 응답 `204`** (No Content)
+
+---
+
 ### 그룹 기록 목록 조회
 ```
 GET /api/groups/<uuid:id>/memories/
@@ -666,9 +844,13 @@ POST /api/chat/
 **요청**
 ```json
 {
-  "message": "내가 제일 자주 간 카페가 어디야?"
+  "message": "내가 제일 자주 간 카페가 어디야?",
+  "group_id": null
 }
 ```
+
+`group_id` 미전달 또는 `null` → 개인 기록에서 검색  
+`group_id` 전달 → 해당 그룹의 기록에서 검색 (활성 멤버만 가능)
 
 **응답 `200`**
 ```json
@@ -692,16 +874,33 @@ POST /api/chat/
 ### 대화 기록 조회
 ```
 GET /api/chat/history/
+GET /api/chat/history/?group_id=<uuid>
 인증: 필요
 ```
 
-**응답 `200`**
+`group_id` 미전달 → 개인 채팅 기록  
+`group_id` 전달 → 그룹 채팅 기록 (활성 멤버만 가능)
+
+**개인 응답 `200`**
 ```json
 [
   {
     "id": "uuid",
     "query_text": "내가 제일 자주 간 카페가 어디야?",
     "ai_response": "가장 자주 방문한 카페는...",
+    "created_at": "2026-04-29T12:00:00Z"
+  }
+]
+```
+
+**그룹 응답 `200`** — `user_nickname` 필드 추가
+```json
+[
+  {
+    "id": "uuid",
+    "user_nickname": "홍길동",
+    "query_text": "우리 팀이 지난번에 어디서 밥 먹었지?",
+    "ai_response": "지난 3월 10일 강남구 삼성동...",
     "created_at": "2026-04-29T12:00:00Z"
   }
 ]
