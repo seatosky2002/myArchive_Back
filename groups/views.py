@@ -196,6 +196,37 @@ class LeaveGroupView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+# ─── Owner 양도 ──────────────────────────────────────────────────────────────
+
+class TransferOwnerView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        group  = get_object_or_404(Group, pk=pk, deleted_at__isnull=True)
+        me     = _get_active_member(group, request.user)
+        _require_owner(me)
+
+        target_user_id = request.data.get('user_id')
+        if not target_user_id:
+            raise ValidationError('user_id가 필요합니다.')
+
+        target = get_object_or_404(GroupMember, group=group, user_id=target_user_id, status=MemberStatus.ACTIVE)
+        if target.user == request.user:
+            raise ValidationError('본인에게 양도할 수 없습니다.')
+
+        # 현재 owner → admin, 대상 → owner
+        me.role = MemberRole.ADMIN
+        me.save(update_fields=['role'])
+        target.role = MemberRole.OWNER
+        target.save(update_fields=['role'])
+
+        _log(group, request.user, ActivityType.MEMBER_ROLE_CHANGED,
+             target=target.user,
+             metadata={'old_role': 'owner', 'new_role': 'owner', 'transfer': True})
+
+        return Response({'detail': f'{target.user.nickname}에게 그룹 오너가 양도되었습니다.'})
+
+
 # ─── 초대 코드 재발급 ─────────────────────────────────────────────────────────
 
 class ResetInviteCodeView(APIView):

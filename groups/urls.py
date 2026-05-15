@@ -14,6 +14,8 @@ urlpatterns = [
     path('<uuid:pk>/members/<uuid:user_id>/', views.GroupMemberDetailView.as_view(), name='group-member-detail'),
     # 탈퇴
     path('<uuid:pk>/leave/',                views.LeaveGroupView.as_view(),        name='group-leave'),
+    # owner 양도
+    path('<uuid:pk>/transfer-owner/',       views.TransferOwnerView.as_view(),     name='group-transfer-owner'),
     # 초대 코드 재발급
     path('<uuid:pk>/reset-invite-code/',    views.ResetInviteCodeView.as_view(),   name='group-reset-invite'),
     # 그룹 카테고리 목록 / 생성
