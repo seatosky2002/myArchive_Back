@@ -242,6 +242,27 @@ class ResetInviteCodeView(APIView):
         return Response({'invite_code': group.invite_code})
 
 
+# ─── 그룹 활동 로그 ───────────────────────────────────────────────────────────
+
+class GroupActivityListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        from .serializers import GroupActivitySerializer
+        return GroupActivitySerializer
+
+    def get_queryset(self):
+        group  = get_object_or_404(Group, pk=self.kwargs['pk'], deleted_at__isnull=True)
+        member = _get_active_member(group, self.request.user)
+        _require_admin(member)
+        return (
+            GroupActivity.objects
+            .filter(group=group)
+            .select_related('actor', 'target')
+            .order_by('-created_at')[:100]
+        )
+
+
 # ─── 그룹 카테고리 목록 / 생성 ───────────────────────────────────────────────
 
 class GroupCategoryListCreateView(APIView):

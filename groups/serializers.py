@@ -1,6 +1,6 @@
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Group, GroupMember, GroupCategory, MemberRole, MemberStatus
+from .models import Group, GroupMember, GroupCategory, GroupActivity, MemberRole, MemberStatus
 
 
 class GroupMemberUserSerializer(serializers.Serializer):
@@ -97,6 +97,15 @@ class GroupCategorySerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return GroupCategory.objects.create(**validated_data)
+
+
+class GroupActivitySerializer(serializers.ModelSerializer):
+    actor_nickname  = serializers.CharField(source='actor.nickname', read_only=True)
+    target_nickname = serializers.CharField(source='target.nickname', read_only=True, default=None)
+
+    class Meta:
+        model  = GroupActivity
+        fields = ['id', 'type', 'actor_nickname', 'target_nickname', 'metadata', 'created_at']
 
 
 class InviteCodeSerializer(serializers.Serializer):
