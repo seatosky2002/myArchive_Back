@@ -177,6 +177,18 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 # ───────────────────────────────────────────
+# Email (비밀번호 재설정)
+# ───────────────────────────────────────────
+EMAIL_BACKEND    = env('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST       = env('EMAIL_HOST', default='')
+EMAIL_PORT       = env.int('EMAIL_PORT', default=587)
+EMAIL_USE_TLS    = env.bool('EMAIL_USE_TLS', default=True)
+EMAIL_HOST_USER  = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@mymemorymap.com')
+FRONTEND_URL     = env('FRONTEND_URL', default='http://localhost:5173')
+
+# ───────────────────────────────────────────
 # Gemini API
 # ───────────────────────────────────────────
 GEMINI_API_KEY = env('GEMINI_API_KEY')

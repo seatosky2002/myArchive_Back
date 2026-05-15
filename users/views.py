@@ -1,4 +1,9 @@
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -139,8 +144,9 @@ def _get_user_from_refresh(refresh):
 
 class MeView(APIView):
     """
-    GET  /api/users/me/ → 내 프로필 조회
-    PUT  /api/users/me/ → 내 프로필 수정 (nickname, profile_img_url)
+    GET    /api/users/me/ → 내 프로필 조회
+    PUT    /api/users/me/ → 내 프로필 수정 (nickname, profile_img_url)
+    DELETE /api/users/me/ → 계정 탈퇴 (비밀번호 확인 필요)
     """
     permission_classes = (IsAuthenticated,)
 
@@ -156,3 +162,115 @@ class MeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(UserSerializer(request.user).data)
+
+    def delete(self, request):
+        password = request.data.get('password', '')
+        if not request.user.check_password(password):
+            return Response({'detail': '비밀번호가 올바르지 않습니다.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 현재 토큰 블랙리스트 등록
+        access_token = request.auth
+        if access_token:
+            blacklist.add(access_token['jti'], access_token['exp'])
+        refresh_str = request.COOKIES.get(REFRESH_COOKIE)
+        if refresh_str:
+            try:
+                refresh = RefreshToken(refresh_str)
+                blacklist.add(refresh['jti'], refresh['exp'])
+            except TokenError:
+                pass
+
+        request.user.delete()
+        response = Response({'detail': '계정이 삭제되었습니다.'}, status=status.HTTP_200_OK)
+        response.delete_cookie(REFRESH_COOKIE, path=REFRESH_COOKIE_PATH)
+        return response
+
+
+class PasswordChangeView(APIView):
+    """
+    PUT /api/users/me/password/ → 비밀번호 변경 (현재 비밀번호 확인 필요)
+    """
+    permission_classes = (IsAuthenticated,)
+
+    def put(self, request):
+        current  = request.data.get('current_password', '')
+        new_pw   = request.data.get('new_password', '')
+
+        if not current or not new_pw:
+            return Response(
+                {'detail': 'current_password와 new_password가 필요합니다.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not request.user.check_password(current):
+            return Response({'detail': '현재 비밀번호가 올바르지 않습니다.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_pw) < 8:
+            return Response({'detail': '새 비밀번호는 8자 이상이어야 합니다.'}, status=status.HTTP_400_BAD_REQUEST)
+        if current == new_pw:
+            return Response({'detail': '새 비밀번호가 현재 비밀번호와 동일합니다.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.set_password(new_pw)
+        request.user.save(update_fields=['password'])
+        return Response({'detail': '비밀번호가 변경되었습니다.'})
+
+
+class PasswordResetView(APIView):
+    """
+    POST /api/users/password-reset/
+    가입된 이메일로 재설정 링크 발송. 이메일 미존재 시에도 200 반환 (계정 존재 여부 노출 방지).
+    """
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        if not email:
+            return Response({'detail': 'email이 필요합니다.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        User = get_user_model()
+        try:
+            user = User.objects.get(email=email)
+            uid   = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+            reset_url = f"{getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')}/reset-password/{uid}/{token}/"
+            send_mail(
+                subject='[MyMemoryMap] 비밀번호 재설정',
+                message=f'아래 링크를 클릭해 비밀번호를 재설정하세요 (24시간 유효):\n\n{reset_url}',
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@mymemorymap.com'),
+                recipient_list=[email],
+                fail_silently=True,
+            )
+        except User.DoesNotExist:
+            pass  # 계정 존재 여부 노출 방지
+
+        return Response({'detail': '이메일이 전송되었습니다. 받은 편지함을 확인해주세요.'})
+
+
+class PasswordResetConfirmView(APIView):
+    """
+    POST /api/users/password-reset/confirm/
+    uid + token 검증 후 새 비밀번호로 변경.
+    """
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        uid      = request.data.get('uid', '')
+        token    = request.data.get('token', '')
+        new_pw   = request.data.get('new_password', '')
+
+        if not uid or not token or not new_pw:
+            return Response({'detail': 'uid, token, new_password가 필요합니다.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_pw) < 8:
+            return Response({'detail': '비밀번호는 8자 이상이어야 합니다.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        User = get_user_model()
+        try:
+            pk   = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=pk)
+        except (User.DoesNotExist, ValueError, TypeError):
+            return Response({'detail': '유효하지 않은 링크입니다.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not default_token_generator.check_token(user, token):
+            return Response({'detail': '링크가 만료되었거나 유효하지 않습니다.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_pw)
+        user.save(update_fields=['password'])
+        return Response({'detail': '비밀번호가 재설정되었습니다.'})
