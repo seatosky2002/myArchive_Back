@@ -85,6 +85,19 @@ class GroupCategorySerializer(serializers.ModelSerializer):
         model  = GroupCategory
         fields = ['id', 'name', 'color_code']
 
+    def validate_name(self, value):
+        group = self.context.get('group') or (self.instance.group if self.instance else None)
+        if group:
+            qs = GroupCategory.objects.filter(group=group, name=value)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError('이미 존재하는 카테고리 이름입니다.')
+        return value
+
+    def create(self, validated_data):
+        return GroupCategory.objects.create(**validated_data)
+
 
 class InviteCodeSerializer(serializers.Serializer):
     invite_code = serializers.CharField()

@@ -105,9 +105,10 @@ class MemoryCreateSerializer(serializers.Serializer):
     weather     = serializers.ChoiceField(choices=Memory.weather.field.choices)
     visited_at  = serializers.DateField()
     location_id = serializers.UUIDField()
-    category_id = serializers.IntegerField(required=False, allow_null=True)
-    group_id    = serializers.UUIDField(required=False, allow_null=True)
-    content     = serializers.CharField()
+    category_id       = serializers.IntegerField(required=False, allow_null=True)
+    group_id          = serializers.UUIDField(required=False, allow_null=True)
+    group_category_id = serializers.IntegerField(required=False, allow_null=True)
+    content           = serializers.CharField()
     tags        = serializers.ListField(
         child=serializers.CharField(max_length=50),
         required=False,
@@ -126,6 +127,14 @@ class MemoryCreateSerializer(serializers.Serializer):
         user = self.context['request'].user
         if not Category.objects.filter(pk=value, user=user).exists():
             raise serializers.ValidationError('존재하지 않는 카테고리입니다.')
+        return value
+
+    def validate_group_category_id(self, value):
+        if value is None:
+            return value
+        from groups.models import GroupCategory
+        if not GroupCategory.objects.filter(pk=value).exists():
+            raise serializers.ValidationError('존재하지 않는 그룹 카테고리입니다.')
         return value
 
     def validate_group_id(self, value):
@@ -155,6 +164,7 @@ class MemoryCreateSerializer(serializers.Serializer):
             location_id=validated_data.pop('location_id'),
             category_id=validated_data.pop('category_id', None),
             group_id=validated_data.pop('group_id', None),
+            group_category_id=validated_data.pop('group_category_id', None),
             author_nickname=user.nickname,
             **validated_data,
         )
