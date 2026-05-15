@@ -17,6 +17,7 @@ from django.conf import settings
 from pgvector.django import CosineDistance
 
 from memories.models import MemoryDetail, ChatSession
+from groups.models import GroupChatSession
 
 logger = logging.getLogger(__name__)
 
@@ -71,15 +72,12 @@ def embed_memory(memory_detail: MemoryDetail) -> None:
         raise
 
 
-def rag_chat(user, message: str) -> dict:
+def rag_chat(user, message: str, group=None) -> dict:
     """
     RAG 챗봇 메인 함수.
 
-    1. 질문 임베딩
-    2. pgvector로 유사 기록 상위 5개 검색
-    3. 컨텍스트 구성 후 Gemini에 전달
-    4. ChatSession에 저장
-    5. 응답 + 출처 반환
+    group=None  → 개인 기록에서 검색, ChatSession 저장
+    group=Group → 해당 그룹 기록에서 검색, GroupChatSession 저장
     """
     # 1. 질문 임베딩
     query_result = _client.models.embed_content(
@@ -89,16 +87,27 @@ def rag_chat(user, message: str) -> dict:
     )
     query_vector = query_result.embeddings[0].values
 
-    # 2. 유사 기록 검색
+    # 2. 유사 기록 검색 — 개인/그룹 컨텍스트 분기
+    if group:
+        base_qs = MemoryDetail.objects.filter(
+            memory__group=group,
+            content_embedding__isnull=False,
+        )
+    else:
+        base_qs = MemoryDetail.objects.filter(
+            memory__user=user,
+            memory__group__isnull=True,
+            content_embedding__isnull=False,
+        )
+
     results = (
-        MemoryDetail.objects
-        .filter(memory__user=user, content_embedding__isnull=False)
+        base_qs
         .annotate(distance=CosineDistance('content_embedding', query_vector))
         .order_by('distance')
-        .select_related('memory', 'memory__location', 'memory__category')[:5]
+        .select_related('memory', 'memory__location', 'memory__user')[:5]
     )
 
-    # 3. 컨텍스트 구성 (distance 0.5 이하인 것만 관련 기록으로 포함)
+    # 3. 컨텍스트 구성 (distance 0.5 이하인 것만 포함)
     DISTANCE_THRESHOLD = 0.5
     sources = []
     context_lines = []
@@ -107,7 +116,9 @@ def rag_chat(user, message: str) -> dict:
             continue
         m = md.memory
         place_name = m.location.place_name if m.location else '알 수 없는 장소'
-        line = f"- [{m.visited_at}] {m.title} / 장소: {place_name} / 내용: {md.content}"
+        author = m.author_nickname or m.user.nickname
+        content_preview = md.content[:500]  # 긴 본문 truncate
+        line = f"- [{m.visited_at}] {m.title} (작성자: {author}) / 장소: {place_name} / 내용: {content_preview}"
         context_lines.append(line)
         sources.append({
             'title': m.title,
@@ -128,11 +139,19 @@ def rag_chat(user, message: str) -> dict:
     ai_text = response.text
 
     # 5. 대화 기록 저장
-    ChatSession.objects.create(
-        user=user,
-        query_text=message,
-        ai_response=ai_text,
-    )
+    if group:
+        GroupChatSession.objects.create(
+            group=group,
+            user=user,
+            query_text=message,
+            ai_response=ai_text,
+        )
+    else:
+        ChatSession.objects.create(
+            user=user,
+            query_text=message,
+            ai_response=ai_text,
+        )
 
     return {
         'response': ai_text,
