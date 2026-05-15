@@ -24,14 +24,13 @@ erDiagram
     users {
         uuid id PK
         string email UK
-        string username
         string nickname
         text profile_img_url
         datetime date_joined
     }
 
     address_regions {
-        uuid id PK
+        bigint id PK
         string province
         string city_district
         string town_neighborhood
@@ -39,8 +38,8 @@ erDiagram
     }
 
     address_details {
-        uuid id PK
-        uuid region_id FK
+        bigint id PK
+        bigint region_id FK
         text road_address_name
         text address_name
         string main_address_no
@@ -49,7 +48,7 @@ erDiagram
 
     locations {
         uuid id PK
-        uuid address_detail_id FK
+        bigint address_detail_id FK
         string kakao_place_id UK
         string place_name
         float latitude
@@ -58,17 +57,83 @@ erDiagram
     }
 
     categories {
-        int id PK
+        bigint id PK
         uuid user_id FK
         string name
         string color_code
     }
 
+    groups {
+        uuid id PK
+        uuid created_by FK
+        string name
+        text description
+        text cover_img_url
+        string invite_code UK
+        int max_members
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    group_members {
+        uuid id PK
+        uuid group_id FK
+        uuid user_id FK
+        uuid invited_by FK
+        string role
+        string status
+        datetime joined_at
+        datetime created_at
+    }
+
+    group_invitations {
+        uuid id PK
+        uuid group_id FK
+        uuid invited_by FK
+        string email
+        string token UK
+        string role
+        datetime expires_at
+        datetime accepted_at
+        datetime created_at
+    }
+
+    group_categories {
+        bigint id PK
+        uuid group_id FK
+        uuid created_by FK
+        string name
+        string color_code
+    }
+
+    group_activities {
+        uuid id PK
+        uuid group_id FK
+        uuid actor FK
+        uuid target FK
+        string type
+        json metadata
+        datetime created_at
+    }
+
+    group_chat_sessions {
+        uuid id PK
+        uuid group_id FK
+        uuid user_id FK
+        text query_text
+        text ai_response
+        datetime created_at
+    }
+
     memories {
         uuid id PK
         uuid user_id FK
+        uuid group_id FK
         uuid location_id FK
-        int category_id FK
+        bigint category_id FK
+        bigint group_category_id FK
+        string author_nickname
         string title
         string mood
         string weather
@@ -104,13 +169,29 @@ erDiagram
         datetime created_at
     }
 
-    users ||--o{ memories : ""
-    users ||--o{ categories : ""
-    users ||--o{ chat_sessions : ""
+    users ||--o{ memories : "writes"
+    users ||--o{ categories : "owns"
+    users ||--o{ chat_sessions : "asks"
+    users ||--o{ groups : "creates"
+    users ||--o{ group_members : "joins"
+    users ||--o{ group_invitations : "invites"
+    users ||--o{ group_activities : "acts"
+    users ||--o{ group_chat_sessions : "asks"
+
     address_regions ||--o{ address_details : ""
     address_details ||--o{ locations : ""
     locations ||--o{ memories : ""
+
     categories ||--o{ memories : ""
+    group_categories ||--o{ memories : ""
+
+    groups ||--o{ group_members : ""
+    groups ||--o{ group_invitations : ""
+    groups ||--o{ group_categories : ""
+    groups ||--o{ group_activities : ""
+    groups ||--o{ group_chat_sessions : ""
+    groups ||--o{ memories : ""
+
     memories ||--|| memory_details : ""
     memories ||--o{ tags : ""
     memories ||--o{ memory_images : ""
@@ -120,6 +201,9 @@ erDiagram
 - `Memory` + `MemoryDetail` 수직 파티셔닝 — 목록 조회 시 무거운 `content`, `embedding` 컬럼 건드리지 않음
 - `AddressRegion → AddressDetail → Location` 3단계 정규화 — 행정구역 마스터 중복 저장 방지
 - `content_embedding`: pgvector `VectorField(3072)` — Gemini 임베딩 저장, RAG 코사인 유사도 검색에 사용
+- `memories.group_id` nullable FK — 개인 기록(null)과 그룹 기록을 단일 테이블로 관리, CheckConstraint로 category 범위 강제
+- `Group` soft delete (`deleted_at`) — 그룹 삭제 시 기록 보존
+- `GroupActivity` — 그룹 내 주요 행위 감사 로그 (멤버 가입/추방/역할 변경/기억 삭제)
 
 ---
 
