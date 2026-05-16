@@ -20,10 +20,6 @@ urlpatterns = [
     path('<uuid:pk>/reset-invite-code/',    views.ResetInviteCodeView.as_view(),   name='group-reset-invite'),
     # 그룹 활동 로그 (admin 이상)
     path('<uuid:pk>/activities/',                        views.GroupActivityListView.as_view(),       name='group-activities'),
-    # 그룹 카테고리 목록 / 생성
-    path('<uuid:pk>/categories/',                        views.GroupCategoryListCreateView.as_view(), name='group-categories'),
-    # 그룹 카테고리 수정 / 삭제
-    path('<uuid:pk>/categories/<int:category_id>/',      views.GroupCategoryDetailView.as_view(),     name='group-category-detail'),
     # 그룹 기억 목록
     path('<uuid:pk>/memories/',             views.GroupMemoryListView.as_view(),   name='group-memories'),
 ]

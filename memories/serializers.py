@@ -1,17 +1,15 @@
 from rest_framework import serializers
 from locations.serializers import LocationSerializer
-from .models import Category, Memory, MemoryDetail, MemoryImage, Tag
+from .models import Memory, MemoryDetail, MemoryImage, Tag
 
 
 class TagSerializer(serializers.ModelSerializer):
-    """태그 읽기용. Memory 응답에 tags 배열로 중첩."""
     class Meta:
         model = Tag
         fields = ('id', 'name')
 
 
 class MemoryImageSerializer(serializers.ModelSerializer):
-    """이미지 읽기용. Memory 상세 응답에 images 배열로 중첩."""
     url = serializers.SerializerMethodField()
 
     def get_url(self, obj):
@@ -24,27 +22,7 @@ class MemoryImageSerializer(serializers.ModelSerializer):
         fields = ('id', 'url', 'created_at')
 
 
-class CategorySerializer(serializers.ModelSerializer):
-    """
-    카테고리 읽기/쓰기용.
-    GET /api/memories/categories/ 및 Memory 응답에 중첩 사용.
-    """
-    class Meta:
-        model = Category
-        fields = ('id', 'name', 'color_code')
-
-    def create(self, validated_data):
-        # 카테고리는 반드시 로그인한 유저 소유로 생성
-        user = self.context['request'].user
-        return Category.objects.create(user=user, **validated_data)
-
-
 class MemoryListSerializer(serializers.ModelSerializer):
-    """
-    기록 목록/마커용 경량 Serializer.
-    GET /api/memories/ 및 GET /api/groups/{id}/memories/ 응답에 사용.
-    content(본문)는 포함하지 않아 MemoryDetail JOIN 없이 빠르게 조회.
-    """
     location = LocationSerializer(read_only=True)
     tags = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
@@ -58,7 +36,8 @@ class MemoryListSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'user_id', 'group_id', 'author_nickname',
             'title', 'mood', 'mood_display', 'weather', 'weather_display',
-            'visited_at', 'created_at', 'location', 'category', 'tags', 'images',
+            'visited_at', 'created_at', 'location',
+            'tags', 'images',
         )
 
     def get_tags(self, obj):
@@ -69,15 +48,9 @@ class MemoryListSerializer(serializers.ModelSerializer):
 
 
 class MemoryDetailSerializer(serializers.ModelSerializer):
-    """
-    기록 상세 Serializer.
-    GET /api/memories/<id>/ 응답에 사용.
-    MemoryDetail(content)을 select_related로 함께 조회하여 본문 포함.
-    """
     location = LocationSerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)
     images = MemoryImageSerializer(many=True, read_only=True)
-    category = CategorySerializer(read_only=True)
     content = serializers.CharField(source='detail.content', read_only=True)
     mood_display = serializers.CharField(source='get_mood_display', read_only=True)
     weather_display = serializers.CharField(source='get_weather_display', read_only=True)
@@ -90,7 +63,7 @@ class MemoryDetailSerializer(serializers.ModelSerializer):
             'id', 'user_id', 'group_id', 'author_nickname',
             'title', 'mood', 'mood_display', 'weather', 'weather_display',
             'visited_at', 'created_at', 'updated_at',
-            'location', 'category', 'tags', 'images', 'content',
+            'location', 'tags', 'images', 'content',
         )
 
 
@@ -105,10 +78,8 @@ class MemoryCreateSerializer(serializers.Serializer):
     weather     = serializers.ChoiceField(choices=Memory.weather.field.choices)
     visited_at  = serializers.DateField()
     location_id = serializers.UUIDField()
-    category_id       = serializers.IntegerField(required=False, allow_null=True)
-    group_id          = serializers.UUIDField(required=False, allow_null=True)
-    group_category_id = serializers.IntegerField(required=False, allow_null=True)
-    content           = serializers.CharField()
+    group_id    = serializers.UUIDField(required=False, allow_null=True)
+    content     = serializers.CharField()
     tags        = serializers.ListField(
         child=serializers.CharField(max_length=50),
         required=False,
@@ -119,22 +90,6 @@ class MemoryCreateSerializer(serializers.Serializer):
         from locations.models import Location
         if not Location.objects.filter(pk=value).exists():
             raise serializers.ValidationError('존재하지 않는 장소입니다.')
-        return value
-
-    def validate_category_id(self, value):
-        if value is None:
-            return value
-        user = self.context['request'].user
-        if not Category.objects.filter(pk=value, user=user).exists():
-            raise serializers.ValidationError('존재하지 않는 카테고리입니다.')
-        return value
-
-    def validate_group_category_id(self, value):
-        if value is None:
-            return value
-        from groups.models import GroupCategory
-        if not GroupCategory.objects.filter(pk=value).exists():
-            raise serializers.ValidationError('존재하지 않는 그룹 카테고리입니다.')
         return value
 
     def validate_group_id(self, value):
@@ -162,9 +117,7 @@ class MemoryCreateSerializer(serializers.Serializer):
         memory = Memory.objects.create(
             user=user,
             location_id=validated_data.pop('location_id'),
-            category_id=validated_data.pop('category_id', None),
             group_id=validated_data.pop('group_id', None),
-            group_category_id=validated_data.pop('group_category_id', None),
             author_nickname=user.nickname,
             **validated_data,
         )
@@ -188,8 +141,6 @@ class MemoryCreateSerializer(serializers.Serializer):
         for attr, value in validated_data.items():
             if attr == 'location_id':
                 instance.location_id = value
-            elif attr == 'category_id':
-                instance.category_id = value
             else:
                 setattr(instance, attr, value)
         instance.save()

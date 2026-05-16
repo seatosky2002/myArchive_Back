@@ -11,9 +11,8 @@ class MemoryPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 200
 
-from .models import Category, Memory, MemoryImage
+from .models import Memory, MemoryImage
 from .serializers import (
-    CategorySerializer,
     MemoryCreateSerializer,
     MemoryDetailSerializer,
     MemoryImageSerializer,
@@ -39,7 +38,7 @@ class MemoryListCreateView(APIView):
         queryset = (
             Memory.objects
             .filter(user=request.user, group__isnull=True)
-            .select_related('location__address_detail', 'category')
+            .select_related('location__address_detail')
             .prefetch_related('tags', 'images')
             .order_by('-visited_at')
         )
@@ -82,7 +81,7 @@ class MemoryDetailView(APIView):
         try:
             return (
                 Memory.objects
-                .select_related('location__address_detail__region', 'category', 'detail', 'group')
+                .select_related('location__address_detail__region', 'detail', 'group')
                 .prefetch_related('tags', 'images')
                 .get(pk=pk)
             )
@@ -152,57 +151,6 @@ class MemoryDetailView(APIView):
             )
 
         memory.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-class CategoryListCreateView(APIView):
-    """
-    GET  /api/memories/categories/ → 내 카테고리 목록
-    POST /api/memories/categories/ → 카테고리 생성
-    """
-    permission_classes = (IsAuthenticated,)
-
-    def get(self, request):
-        categories = Category.objects.filter(user=request.user)
-        return Response(CategorySerializer(categories, many=True).data)
-
-    def post(self, request):
-        serializer = CategorySerializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-class CategoryDetailView(APIView):
-    """
-    PUT    /api/memories/categories/<id>/ → 카테고리 수정
-    DELETE /api/memories/categories/<id>/ → 카테고리 삭제
-    본인 카테고리가 아니면 404 반환.
-    """
-    permission_classes = (IsAuthenticated,)
-
-    def get_object(self, pk, user):
-        try:
-            return Category.objects.get(pk=pk, user=user)
-        except Category.DoesNotExist:
-            return None
-
-    def put(self, request, pk):
-        category = self.get_object(pk, request.user)
-        if not category:
-            return Response({'detail': '카테고리를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = CategorySerializer(category, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-    def delete(self, request, pk):
-        category = self.get_object(pk, request.user)
-        if not category:
-            return Response({'detail': '카테고리를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
-
-        category.delete()  # memories의 category_id는 SET_NULL로 처리됨
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

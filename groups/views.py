@@ -263,58 +263,6 @@ class GroupActivityListView(generics.ListAPIView):
         )
 
 
-# ─── 그룹 카테고리 목록 / 생성 ───────────────────────────────────────────────
-
-class GroupCategoryListCreateView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, pk):
-        group  = get_object_or_404(Group, pk=pk, deleted_at__isnull=True)
-        _get_active_member(group, request.user)
-        from .serializers import GroupCategorySerializer
-        from .models import GroupCategory
-        qs = GroupCategory.objects.filter(group=group)
-        return Response(GroupCategorySerializer(qs, many=True).data)
-
-    def post(self, request, pk):
-        group  = get_object_or_404(Group, pk=pk, deleted_at__isnull=True)
-        member = _get_active_member(group, request.user)
-        _require_admin(member)
-        from .serializers import GroupCategorySerializer
-        from .models import GroupCategory
-        serializer = GroupCategorySerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(group=group, created_by=request.user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-class GroupCategoryDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def _get_category(self, pk, category_id):
-        from .models import GroupCategory
-        group = get_object_or_404(Group, pk=pk, deleted_at__isnull=True)
-        category = get_object_or_404(GroupCategory, pk=category_id, group=group)
-        return group, category
-
-    def patch(self, request, pk, category_id):
-        group, category = self._get_category(pk, category_id)
-        member = _get_active_member(group, request.user)
-        _require_admin(member)
-        from .serializers import GroupCategorySerializer
-        serializer = GroupCategorySerializer(category, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-    def delete(self, request, pk, category_id):
-        group, category = self._get_category(pk, category_id)
-        member = _get_active_member(group, request.user)
-        _require_admin(member)
-        category.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
 # ─── 그룹 기억 목록 ───────────────────────────────────────────────────────────
 
 class GroupMemoryListView(generics.ListAPIView):

@@ -189,6 +189,20 @@ DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@mymemorymap.com'
 FRONTEND_URL     = env('FRONTEND_URL', default='http://localhost:5173')
 
 # ───────────────────────────────────────────
+# Django Cache (Redis DB 2)
+# ───────────────────────────────────────────
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': env('REDIS_CACHE_URL', default='redis://localhost:6379/2'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'TIMEOUT': 300,
+    }
+}
+
+# ───────────────────────────────────────────
 # Gemini API
 # ───────────────────────────────────────────
 GEMINI_API_KEY = env('GEMINI_API_KEY')

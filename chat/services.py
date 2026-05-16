@@ -6,6 +6,7 @@ google.genai 새 SDK 사용 (google.generativeai deprecated).
 embed_memory(memory_detail): MemoryDetail 하나를 임베딩해서 저장
 rag_chat(user, message):     질문 → 유사 기록 검색 → Gemini 답변
 """
+import hashlib
 import logging
 import time
 import re
@@ -14,6 +15,7 @@ from google import genai
 from google.genai import types
 from google.api_core.exceptions import ResourceExhausted
 from django.conf import settings
+from django.core.cache import cache
 from pgvector.django import CosineDistance
 
 from memories.models import MemoryDetail, ChatSession
@@ -79,81 +81,90 @@ def rag_chat(user, message: str, group=None) -> dict:
     group=None  → 개인 기록에서 검색, ChatSession 저장
     group=Group → 해당 그룹 기록에서 검색, GroupChatSession 저장
     """
-    # 1. 질문 임베딩
-    query_result = _client.models.embed_content(
-        model=EMBEDDING_MODEL,
-        contents=message,
-        config=types.EmbedContentConfig(task_type='RETRIEVAL_QUERY'),
-    )
-    query_vector = query_result.embeddings[0].values
+    # 캐시 키: 동일 질문(소문자 정규화)은 같은 키로 매핑
+    context_id = f'group:{group.id}' if group else f'user:{user.id}'
+    msg_hash = hashlib.sha256(message.strip().lower().encode()).hexdigest()[:16]
+    cache_key = f'rag:{context_id}:q:{msg_hash}'
 
-    # 2. 유사 기록 검색 — 개인/그룹 컨텍스트 분기
-    if group:
-        base_qs = MemoryDetail.objects.filter(
-            memory__group=group,
-            content_embedding__isnull=False,
-        )
+    cached = cache.get(cache_key)
+    if cached:
+        result = cached
     else:
-        base_qs = MemoryDetail.objects.filter(
-            memory__user=user,
-            memory__group__isnull=True,
-            content_embedding__isnull=False,
+        # 1. 질문 임베딩
+        query_result = _client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=message,
+            config=types.EmbedContentConfig(task_type='RETRIEVAL_QUERY'),
+        )
+        query_vector = query_result.embeddings[0].values
+
+        # 2. 유사 기록 검색 — 개인/그룹 컨텍스트 분기
+        if group:
+            base_qs = MemoryDetail.objects.filter(
+                memory__group=group,
+                content_embedding__isnull=False,
+            )
+        else:
+            base_qs = MemoryDetail.objects.filter(
+                memory__user=user,
+                memory__group__isnull=True,
+                content_embedding__isnull=False,
+            )
+
+        results = (
+            base_qs
+            .annotate(distance=CosineDistance('content_embedding', query_vector))
+            .order_by('distance')
+            .select_related('memory', 'memory__location', 'memory__user')[:5]
         )
 
-    results = (
-        base_qs
-        .annotate(distance=CosineDistance('content_embedding', query_vector))
-        .order_by('distance')
-        .select_related('memory', 'memory__location', 'memory__user')[:5]
-    )
+        # 3. 컨텍스트 구성 (distance 0.5 이하인 것만 포함)
+        DISTANCE_THRESHOLD = 0.5
+        sources = []
+        context_lines = []
+        for md in results:
+            if md.distance > DISTANCE_THRESHOLD:
+                continue
+            m = md.memory
+            place_name = m.location.place_name if m.location else '알 수 없는 장소'
+            author = m.author_nickname or m.user.nickname
+            content_preview = md.content[:500]
+            line = f"- [{m.visited_at}] {m.title} (작성자: {author}) / 장소: {place_name} / 내용: {content_preview}"
+            context_lines.append(line)
+            sources.append({
+                'title': m.title,
+                'visited_at': str(m.visited_at),
+                'place_name': place_name,
+                'distance': round(float(md.distance), 4),
+            })
 
-    # 3. 컨텍스트 구성 (distance 0.5 이하인 것만 포함)
-    DISTANCE_THRESHOLD = 0.5
-    sources = []
-    context_lines = []
-    for md in results:
-        if md.distance > DISTANCE_THRESHOLD:
-            continue
-        m = md.memory
-        place_name = m.location.place_name if m.location else '알 수 없는 장소'
-        author = m.author_nickname or m.user.nickname
-        content_preview = md.content[:500]  # 긴 본문 truncate
-        line = f"- [{m.visited_at}] {m.title} (작성자: {author}) / 장소: {place_name} / 내용: {content_preview}"
-        context_lines.append(line)
-        sources.append({
-            'title': m.title,
-            'visited_at': str(m.visited_at),
-            'place_name': place_name,
-            'distance': round(float(md.distance), 4),
-        })
+        context = '\n'.join(context_lines) if context_lines else '관련 기록이 없습니다.'
 
-    context = '\n'.join(context_lines) if context_lines else '관련 기록이 없습니다.'
+        # 4. Gemini 호출 (rate limit 시 자동 재시도)
+        prompt = f"{SYSTEM_PROMPT}\n\n[관련 기록]\n{context}\n\n[질문]\n{message}"
+        response = _retry_on_quota(
+            _client.models.generate_content,
+            model=CHAT_MODEL,
+            contents=prompt,
+        )
+        ai_text = response.text
 
-    # 4. Gemini 호출 (rate limit 시 자동 재시도)
-    prompt = f"{SYSTEM_PROMPT}\n\n[관련 기록]\n{context}\n\n[질문]\n{message}"
-    response = _retry_on_quota(
-        _client.models.generate_content,
-        model=CHAT_MODEL,
-        contents=prompt,
-    )
-    ai_text = response.text
+        result = {'response': ai_text, 'sources': sources}
+        cache.set(cache_key, result, timeout=300)
 
-    # 5. 대화 기록 저장
+    # 5. 대화 기록 저장 (캐시 히트 여부와 무관하게 항상)
     if group:
         GroupChatSession.objects.create(
             group=group,
             user=user,
             query_text=message,
-            ai_response=ai_text,
+            ai_response=result['response'],
         )
     else:
         ChatSession.objects.create(
             user=user,
             query_text=message,
-            ai_response=ai_text,
+            ai_response=result['response'],
         )
 
-    return {
-        'response': ai_text,
-        'sources': sources,
-    }
+    return result
