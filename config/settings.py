@@ -137,7 +137,7 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'user': '10000/hour',
+        'user': '1000000/hour',
         'chat': '500/hour',
         'login': '5/minute',
         'register': '3/minute',
