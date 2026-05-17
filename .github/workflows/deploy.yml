@@ -9,15 +9,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: SSH 키 설정
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
       - name: EC2 배포
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_KEY }}
-          script: |
-            cd ~/myArchive_Back
-            git pull origin main
-            docker-compose up -d --build
-            docker-compose exec -T api python manage.py migrate --no-input
+        run: |
+          ssh -i ~/.ssh/ec2_key ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "
+            cd ~/myArchive_Back &&
+            git pull origin main &&
+            docker-compose up -d --build &&
+            docker-compose exec -T api python manage.py migrate --no-input &&
             docker image prune -f
+          "
