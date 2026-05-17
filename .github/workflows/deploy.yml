@@ -12,7 +12,7 @@ jobs:
       - name: SSH 키 설정
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_KEY }}" | base64 -d > ~/.ssh/ec2_key
+          echo "${{ secrets.EC2_KEY }}" | tr -d '\r' > ~/.ssh/ec2_key
           chmod 600 ~/.ssh/ec2_key
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
