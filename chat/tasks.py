@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 )
 def embed_memory_task(self, memory_detail_id):
     from memories.models import MemoryDetail
-    from chat.services import embed_memory
+    from chat.services import embed_memory, selective_cache_invalidation
 
     try:
         md = MemoryDetail.objects.select_related('memory').get(pk=memory_detail_id)
@@ -28,3 +28,8 @@ def embed_memory_task(self, memory_detail_id):
     except Exception as exc:
         logger.error(f'임베딩 실패 (시도 {self.request.retries + 1}/3) memory_id={memory_detail_id}: {exc}')
         raise self.retry(exc=exc)
+
+    try:
+        selective_cache_invalidation(md)
+    except Exception as exc:
+        logger.warning(f'선택적 캐시 무효화 실패 memory_id={memory_detail_id}: {exc}')
