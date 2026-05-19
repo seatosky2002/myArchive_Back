@@ -23,5 +23,6 @@ jobs:
             git pull origin main &&
             docker-compose up -d --build &&
             docker-compose exec -T api python manage.py migrate --no-input &&
+            docker-compose exec -T nginx nginx -s reload &&
             docker image prune -f
           "
