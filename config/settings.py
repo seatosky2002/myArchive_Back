@@ -163,8 +163,9 @@ SIMPLE_JWT = {
 # ───────────────────────────────────────────
 REDIS_BLACKLIST_URL = env('REDIS_BLACKLIST_URL', default='redis://localhost:6379/3')
 
-CELERY_BROKER_URL     = env('CELERY_BROKER_URL',     default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://localhost:6379/1')
+CELERY_BROKER_URL        = env('CELERY_BROKER_URL',     default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND    = env('CELERY_RESULT_BACKEND', default='redis://localhost:6379/1')
+CELERY_TASK_IGNORE_RESULT = True  # 태스크 결과 미사용 — result backend 연결 시도 생략
 
 # ───────────────────────────────────────────
 # CORS — 프론트(localhost:5173) 요청 허용
