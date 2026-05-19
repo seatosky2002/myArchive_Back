@@ -12,6 +12,68 @@
 
 ---
 
+## 아키텍처
+
+```mermaid
+graph TD
+    Client(["🖥️ Client"])
+
+    subgraph EC2["AWS EC2 t3.micro"]
+        nginx["nginx
+리버스 프록시"]
+        SPA["React SPA
+정적 파일"]
+
+        subgraph API["Django API — Gunicorn gthread 4×4"]
+            users["users/
+JWT 인증"]
+            memories["memories/
+기록 CRUD"]
+            locations["locations/
+장소 정규화"]
+            chat["chat/
+RAG 챗봇"]
+        end
+
+        worker["Celery Worker"]
+
+        subgraph RedisDB["Redis"]
+            r0["DB 0
+Celery Broker"]
+            r2["DB 2
+Rate Limit"]
+            r3["DB 3
+JWT Blacklist"]
+        end
+
+        DB[("PostgreSQL
++ pgvector")]
+    end
+
+    Gemini["Google Gemini API
+embedding-001 / 2.5-flash"]
+
+    Client -->|"HTTP :80"| nginx
+    nginx -->|"/api/"| API
+    nginx -->|"/"| SPA
+
+    API --> DB
+    chat -->|"코사인 유사도 검색"| DB
+    users --> r3
+    API --> r2
+
+    memories -->|"post_save signal
+.delay()"| r0
+    r0 -->|"태스크 소비"| worker
+    worker -->|"임베딩 생성"| Gemini
+    worker -->|"벡터 저장"| DB
+
+    chat -->|"질문 임베딩
+답변 생성"| Gemini
+```
+
+---
+
 ## 기술 스택
 
 | 분류 | 기술 |
