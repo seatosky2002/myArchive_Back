@@ -6,7 +6,7 @@
 
 ## 스크린샷
 
-| 지도 & 기록 목록 | AI 챗봇 검색 | 기록 상세 |
+| AI 챗봇 검색 | 지도 & 기록 목록 | 기록 상세 |
 |:---:|:---:|:---:|
 | ![sample1](./sample1.png) | ![sample2](./sample2.png) | ![sample3](./sample3.png) |
 
