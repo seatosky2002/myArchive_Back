@@ -14,6 +14,8 @@ def auto_embed_on_save(sender, instance, created, **kwargs):
     if not created:
         return
 
+    # TEST: delay() 블로킹 여부 확인을 위해 임시 skip
+    return
     try:
         from chat.tasks import embed_memory_task
         embed_memory_task.delay(str(instance.memory_id))
